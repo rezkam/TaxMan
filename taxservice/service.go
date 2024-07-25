@@ -3,7 +3,8 @@ package taxservice
 import (
 	"context"
 	"errors"
-	"time"
+
+	"github.com/rezkam/TaxMan/model"
 )
 
 // TaxService handles the business logic for managing municipality tax records.
@@ -19,9 +20,9 @@ type Config struct {
 
 type taxStore interface {
 	// AddOrUpdateTaxRecord adds a new tax record or updates an existing one.
-	AddOrUpdateTaxRecord(ctx context.Context, municipality string, taxRate float64, startDate, endDate time.Time) error
+	AddOrUpdateTaxRecord(ctx context.Context, record model.TaxRecord) error
 	// GetTaxRate retrieves the tax rate for a municipality on a given date.
-	GetTaxRate(ctx context.Context, municipality string, date time.Time) (float64, error)
+	GetTaxRate(ctx context.Context, query model.TaxQuery) (float64, error)
 }
 
 // New creates a new TaxService with the provided store and configuration.
