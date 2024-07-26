@@ -1,0 +1,132 @@
+openapi: 3.0.0
+info:
+  title: TaxMan API
+  description: API documentation for the TaxMan service
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local server
+
+paths:
+  /tax:
+    post:
+      summary: Add or update a tax record
+      operationId: addOrUpdateTaxRecord
+      requestBody:
+        description: Tax record to add or update
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddOrUpdateTaxRecordRequest'
+      responses:
+        '200':
+          description: Successfully added or updated tax record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddOrUpdateTaxRecordResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /tax/{municipality}/{date}:
+    get:
+      summary: Get the tax rate for a municipality on a given date
+      operationId: getTaxRate
+      parameters:
+        - name: municipality
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Name of the municipality
+        - name: date
+          in: path
+          required: true
+          schema:
+            type: string
+            format: date
+          description: Date to get the tax rate for
+      responses:
+        '200':
+          description: Successfully retrieved tax rate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetTaxRateResponse'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Tax rate not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    AddOrUpdateTaxRecordRequest:
+      type: object
+      properties:
+        municipality:
+          type: string
+        tax_rate:
+          type: number
+          format: float
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        period_type:
+          type: string
+          enum: [yearly, monthly, weekly, daily]
+      required:
+        - municipality
+        - tax_rate
+        - start_date
+        - end_date
+        - period_type
+    AddOrUpdateTaxRecordResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+    GetTaxRateResponse:
+      type: object
+      properties:
+        municipality:
+          type: string
+        date:
+          type: string
+          format: date
+        tax_rate:
+          type: number
+          format: float
+        is_default_rate:
+          type: boolean
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
