@@ -54,3 +54,11 @@ We have implemented Store Interface Segregation, which defines separate interfac
 1. Decoupling: The service is decoupled from the store implementation, making it easier to switch or modify store implementations without affecting the service logic.
 2. Maintainability: Smaller, focused interfaces are easier to understand and maintain, reducing the complexity of the system.
 3. Testability: Segregated interfaces make it easier to mock dependencies during testing, resulting in more reliable and isolated tests.
+
+### Suggestions for future improvements
+1. Validation of input data can be improved to ensure date ranges are matching the period types.
+2. Implementing a caching mechanism to store frequently accessed tax rates can improve performance.
+3. Adding more detailed logging and monitoring to track API usage and errors.
+4. Implementing rate limiting to prevent abuse of the API.
+5. Adding support for more advanced queries, such as filtering by tax rate or date range.
+6. Implementing a API key or token-based authentication mechanism to secure the API and track usage.
