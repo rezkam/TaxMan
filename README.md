@@ -22,9 +22,9 @@ Running tests that require a database connection is posbile in two ways:
 ```bash
 make test
 ```
-This will start a PostgreSQL container and run the tests. The container will be removed after the tests are done. This includes the unit tests and the integration tests.
+This will start a PostgresSQL container and run the tests. The container will be removed after the tests are done. This includes the unit tests and the integration tests.
 
-2. Using a local PostgreSQL database and setting the enviroment variables:
+2. Using a local PostgresSQL database and setting the environment variables:
 ```bash
 export TEST_DB_URL=postgres://user:password@localhost:5432/dbname
 ```
