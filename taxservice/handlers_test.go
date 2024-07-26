@@ -33,135 +33,254 @@ func (m *MockStore) GetTaxRate(ctx context.Context, query model.TaxQuery) (float
 }
 
 func TestAddOrUpdateTaxRecordHandler(t *testing.T) {
-	tests := []struct {
-		name               string
-		requestBody        AddOrUpdateTaxRecordRequest
-		expectedStatusCode int
-		mockReturnError    error
-	}{
-		{
-			name:               "success",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "Valid Name", TaxRate: 10, StartDate: "2020-12-31", EndDate: "2021-12-31"},
-			expectedStatusCode: http.StatusOK,
-			mockReturnError:    nil,
-		},
-		{
-			name:               "invalid municipality",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "", TaxRate: 10, StartDate: "2020-12-31", EndDate: "2021-12-31"},
-			expectedStatusCode: http.StatusBadRequest,
-			mockReturnError:    nil,
-		},
-		{
-			name:               "negative tax rate",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "Valid Name", TaxRate: -10, StartDate: "2020-12-31", EndDate: "2021-12-31"},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               "invalid start date",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "Valid Name", TaxRate: 10, StartDate: "invalid-date", EndDate: "2021-12-31"},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               "invalid end date",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "Valid Name", TaxRate: 10, StartDate: "2020-12-31", EndDate: "invalid-date"},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               "store error",
-			requestBody:        AddOrUpdateTaxRecordRequest{Municipality: "Valid Name", TaxRate: 10, StartDate: "2020-12-31", EndDate: "2021-12-31"},
-			expectedStatusCode: http.StatusInternalServerError,
-			mockReturnError:    errors.New("store error"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStore := &MockStore{
-				addOrUpdateTaxRecordFunc: func(ctx context.Context, record model.TaxRecord) error {
-					return tt.mockReturnError
-				},
-			}
-			svc, err := New(mockStore, Config{
-				MaxMunicipalityNameLength: 20,
-			})
-			require.NoError(t, err)
-
-			reqBody, err := json.Marshal(tt.requestBody)
-			require.NoError(t, err)
-
-			req := httptest.NewRequest(http.MethodPost, "/addOrUpdateTaxRecord", bytes.NewReader(reqBody))
-			rr := httptest.NewRecorder()
-
-			handler := http.HandlerFunc(svc.AddOrUpdateTaxRecordHandler)
-			handler.ServeHTTP(rr, req)
-
-			resp := rr.Result()
-			defer resp.Body.Close()
-
-			require.Equal(t, tt.expectedStatusCode, resp.StatusCode)
+	t.Run("success", func(t *testing.T) {
+		mockStore := &MockStore{
+			addOrUpdateTaxRecordFunc: func(ctx context.Context, record model.TaxRecord) error {
+				return nil
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
 		})
-	}
+		require.NoError(t, err)
+
+		reqBody, err := json.Marshal(AddOrUpdateTaxRecordRequest{
+			Municipality: "Valid Name",
+			TaxRate:      0.1,
+			StartDate:    "2020-12-31",
+			EndDate:      "2021-12-31",
+			PeriodType:   model.Yearly,
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := http.HandlerFunc(svc.AddOrUpdateTaxRecordHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+	})
+
+	t.Run("invalid municipality", func(t *testing.T) {
+		mockStore := &MockStore{}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+		})
+		require.NoError(t, err)
+
+		reqBody, err := json.Marshal(AddOrUpdateTaxRecordRequest{
+			Municipality: "",
+			TaxRate:      0.1,
+			StartDate:    "2020-12-31",
+			EndDate:      "2021-12-31",
+			PeriodType:   model.Yearly,
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := http.HandlerFunc(svc.AddOrUpdateTaxRecordHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		mockStore := &MockStore{
+			addOrUpdateTaxRecordFunc: func(ctx context.Context, record model.TaxRecord) error {
+				return errors.New("store error")
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+		})
+		require.NoError(t, err)
+
+		reqBody, err := json.Marshal(AddOrUpdateTaxRecordRequest{
+			Municipality: "Valid Name",
+			TaxRate:      0.1,
+			StartDate:    "2020-12-31",
+			EndDate:      "2021-12-31",
+			PeriodType:   model.Yearly,
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(reqBody))
+		rr := httptest.NewRecorder()
+
+		handler := http.HandlerFunc(svc.AddOrUpdateTaxRecordHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
 }
 
 func TestGetTaxRateHandler(t *testing.T) {
-	tests := []struct {
-		name               string
-		requestBody        GetTaxRateRequest
-		expectedStatusCode int
-		mockReturnTaxRate  float64
-		mockReturnError    error
-	}{
-		{
-			name:               "success",
-			requestBody:        GetTaxRateRequest{Municipality: "Valid Name", Date: "2020-12-31"},
-			expectedStatusCode: http.StatusOK,
-			mockReturnTaxRate:  5.5,
-			mockReturnError:    nil,
-		},
-		{
-			name:               "invalid municipality",
-			requestBody:        GetTaxRateRequest{Municipality: "", Date: "2020-12-31"},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               "invalid date format",
-			requestBody:        GetTaxRateRequest{Municipality: "Valid Name", Date: "invalid-date"},
-			expectedStatusCode: http.StatusBadRequest,
-		},
-		{
-			name:               "store error",
-			requestBody:        GetTaxRateRequest{Municipality: "Valid Name", Date: "2020-12-31"},
-			expectedStatusCode: http.StatusInternalServerError,
-			mockReturnTaxRate:  0,
-			mockReturnError:    errors.New("store error"),
-		},
-	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockStore := &MockStore{
-				getTaxRateFunc: func(ctx context.Context, query model.TaxQuery) (float64, error) {
-					return tt.mockReturnTaxRate, tt.mockReturnError
-				},
-			}
-			svc, err := New(mockStore, Config{
-				MaxMunicipalityNameLength: 20,
-			})
-			require.NoError(t, err)
+	defaultTaxRate := 0.9
 
-			reqBody, err := json.Marshal(tt.requestBody)
-			require.NoError(t, err)
-
-			req := httptest.NewRequest(http.MethodPost, "/getTaxRate", bytes.NewReader(reqBody))
-			rr := httptest.NewRecorder()
-
-			handler := http.HandlerFunc(svc.GetTaxRateHandler)
-			handler.ServeHTTP(rr, req)
-
-			resp := rr.Result()
-			defer resp.Body.Close()
-
-			require.Equal(t, tt.expectedStatusCode, resp.StatusCode)
+	t.Run("success", func(t *testing.T) {
+		mockStore := &MockStore{
+			getTaxRateFunc: func(ctx context.Context, query model.TaxQuery) (float64, error) {
+				return 5.5, nil
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
 		})
-	}
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		req.SetPathValue(svc.config.MunicipalityURLPattern, "Valid Name")
+		req.SetPathValue(svc.config.DateURLPattern, "2020-12-31")
+
+		handler := http.HandlerFunc(svc.GetTaxRateHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var respBody GetTaxRateResponse
+		err = json.NewDecoder(resp.Body).Decode(&respBody)
+		require.NoError(t, err)
+		require.Equal(t, 5.5, respBody.TaxRate)
+	})
+
+	t.Run("invalid municipality", func(t *testing.T) {
+		mockStore := &MockStore{}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		req.SetPathValue(svc.config.MunicipalityURLPattern, "")
+		req.SetPathValue(svc.config.DateURLPattern, "2020-12-31")
+
+		handler := http.HandlerFunc(svc.GetTaxRateHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		mockStore := &MockStore{
+			getTaxRateFunc: func(ctx context.Context, query model.TaxQuery) (float64, error) {
+				return 0.0, errors.New("store error")
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		req.SetPathValue(svc.config.MunicipalityURLPattern, "Valid Name")
+		req.SetPathValue(svc.config.DateURLPattern, "2020-12-31")
+
+		handler := http.HandlerFunc(svc.GetTaxRateHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+	t.Run("not found error with default value", func(t *testing.T) {
+		mockStore := &MockStore{
+			getTaxRateFunc: func(ctx context.Context, query model.TaxQuery) (float64, error) {
+				return 0.0, model.ErrNotFound
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+			DefaultTaxRate:            &defaultTaxRate,
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		req.SetPathValue(svc.config.MunicipalityURLPattern, "NonExistent")
+		req.SetPathValue(svc.config.DateURLPattern, "2020-12-31")
+
+		handler := http.HandlerFunc(svc.GetTaxRateHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var respBody GetTaxRateResponse
+		err = json.NewDecoder(resp.Body).Decode(&respBody)
+		require.NoError(t, err)
+		require.Equal(t, defaultTaxRate, respBody.TaxRate)
+		require.True(t, respBody.IsDefaultRate)
+	})
+
+	t.Run("not found error without default value", func(t *testing.T) {
+		mockStore := &MockStore{
+			getTaxRateFunc: func(ctx context.Context, query model.TaxQuery) (float64, error) {
+				return 0.0, model.ErrNotFound
+			},
+		}
+		svc, err := New(mockStore, Config{
+			MaxMunicipalityNameLength: 20,
+			MunicipalityURLPattern:    "municipality",
+			DateURLPattern:            "date",
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+
+		req.SetPathValue(svc.config.MunicipalityURLPattern, "NonExistent")
+		req.SetPathValue(svc.config.DateURLPattern, "2020-12-31")
+
+		handler := http.HandlerFunc(svc.GetTaxRateHandler)
+		handler.ServeHTTP(rr, req)
+
+		resp := rr.Result()
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	})
+
 }

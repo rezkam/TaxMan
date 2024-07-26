@@ -31,13 +31,24 @@ func validateDate(dateStr, fieldName string) (time.Time, error) {
 	return date, nil
 }
 
+// validatePeriodType checks if the period type is valid.
+func validatePeriodType(periodType model.PeriodType) error {
+	for _, validType := range model.ValidPeriodTypes {
+		if periodType == validType {
+			return nil
+		}
+	}
+	return errors.New("invalid period type")
+}
+
 // AddOrUpdateTaxRecordRequestToModel converts and validates the request for adding or updating a tax record.
-func (tx *TaxService) AddOrUpdateTaxRecordRequestToModel(req AddOrUpdateTaxRecordRequest) (model.TaxRecord, error) {
+// Assumption: Tax rates are expressed as decimal values representing percentages (e.g., 0.1 for 10%).
+func (tx *Service) AddOrUpdateTaxRecordRequestToModel(req AddOrUpdateTaxRecordRequest) (model.TaxRecord, error) {
 	if err := validateMunicipality(req.Municipality, tx.config.MaxMunicipalityNameLength); err != nil {
 		return model.TaxRecord{}, err
 	}
-	if req.TaxRate < 0 {
-		return model.TaxRecord{}, errors.New("tax rate cannot be negative")
+	if req.TaxRate < 0.0 || req.TaxRate > 1.0 {
+		return model.TaxRecord{}, errors.New("tax rate must be between 0.0 and 1.0")
 	}
 	startDate, err := validateDate(req.StartDate, "start date")
 	if err != nil {
@@ -47,29 +58,33 @@ func (tx *TaxService) AddOrUpdateTaxRecordRequestToModel(req AddOrUpdateTaxRecor
 	if err != nil {
 		return model.TaxRecord{}, err
 	}
+	if err := validatePeriodType(req.PeriodType); err != nil {
+		return model.TaxRecord{}, err
+	}
 
 	taxRecord := model.TaxRecord{
 		Municipality: req.Municipality,
 		TaxRate:      req.TaxRate,
 		StartDate:    startDate,
 		EndDate:      endDate,
+		PeriodType:   req.PeriodType,
 	}
 	return taxRecord, nil
 }
 
 // GetTaxRateRequestToModel converts and validates the request for retrieving the tax rate.
-func (tx *TaxService) GetTaxRateRequestToModel(req GetTaxRateRequest) (model.TaxQuery, error) {
-	if err := validateMunicipality(req.Municipality, tx.config.MaxMunicipalityNameLength); err != nil {
+func (tx *Service) GetTaxRateRequestToModel(municipality, date string) (model.TaxQuery, error) {
+	if err := validateMunicipality(municipality, tx.config.MaxMunicipalityNameLength); err != nil {
 		return model.TaxQuery{}, err
 	}
-	date, err := validateDate(req.Date, "date")
+	parsedDate, err := validateDate(date, "date")
 	if err != nil {
 		return model.TaxQuery{}, err
 	}
 
 	taxQuery := model.TaxQuery{
-		Municipality: req.Municipality,
-		Date:         date,
+		Municipality: municipality,
+		Date:         parsedDate,
 	}
 	return taxQuery, nil
 }
