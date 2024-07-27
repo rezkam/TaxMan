@@ -46,7 +46,6 @@ func (tx *Service) GetTaxRateHandler(w http.ResponseWriter, r *http.Request) {
 
 	taxRate, err := tx.store.GetTaxRate(r.Context(), taxQuery)
 	if err != nil {
-		slog.Error("failed to get tax rate", "error", err)
 		if errors.Is(err, model.ErrNotFound) {
 			if tx.config.DefaultTaxRate != nil {
 				resp := GetTaxRateResponse{
@@ -61,6 +60,7 @@ func (tx *Service) GetTaxRateHandler(w http.ResponseWriter, r *http.Request) {
 			jsonutils.JsonError(w, "tax rate not found", http.StatusNotFound)
 			return
 		}
+		slog.Error("failed to get tax rate", "error", err)
 		jsonutils.JsonError(w, "failed to get tax rate", http.StatusInternalServerError)
 		return
 	}
