@@ -2,17 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/rezkam/TaxMan/internal/constants"
 	"github.com/rezkam/TaxMan/internal/routes"
 	"github.com/rezkam/TaxMan/store"
 	"github.com/rezkam/TaxMan/taxservice"
+	"go.uber.org/fx"
 )
 
 const (
@@ -24,39 +24,83 @@ const (
 	httpWriteTimeout = 15 * time.Second
 	// maxMunicipalityNameLength is the maximum length of a municipality name.
 	maxMunicipalityNameLength = 100
+	// databaseURLKey is the key for the DATABASE_URL environment variable.
+	databaseURLKey = "DATABASE_URL"
+)
+
+var (
+	// defaultTaxRate is the default tax rate to use if no specific rate is found for a municipality.
+	defaultTaxRate = 0.5
 )
 
 func main() {
-	// connectionString := os.Getenv("DATABASE_URL")
-	connectionString := os.Getenv("DATABASE_URL")
-	if connectionString == "" {
-		slog.Error("failed to create database connection DATABASE_URL is not set")
-		os.Exit(1)
-	}
-	postgresStore, err := store.NewPostgresStore(connectionString)
-	if err != nil {
-		slog.Error("failed to create postgres store", "error", err)
-		os.Exit(1)
-	}
+	// Create a new application
+	app := fx.New(
+		//fx.WithLogger(WithSlogLogger),
+		fx.Provide(
+			NewJSONLogger,
+			NewPostgresStore,
+			NewTaxService,
+			NewHTTPServer,
+			NewServeMux,
+		),
+		fx.Invoke(func(s *http.Server) {}),
+	)
 
+	// run the application
+	app.Run()
+
+}
+
+func NewJSONLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
+}
+
+//func WithSlogLogger(log *slog.Logger) fxevent.Logger {
+//	return &fxevent.SlogLogger{Logger: log}
+//}
+
+func NewPostgresStore(lc fx.Lifecycle, log *slog.Logger) (*store.PostgresStore, error) {
+	connectionString := os.Getenv(databaseURLKey)
+	if connectionString == "" {
+		log.Error("Database URL not set", "databaseURLKey", databaseURLKey)
+		return nil, errors.New("database URL not set")
+	}
+	postgresStore, err := store.NewPostgresStore(connectionString, log)
+	if err != nil {
+		log.Error("failed to create postgres store", "error", err)
+		return nil, err
+	}
+	// Add a hook to schedule the closing of the store when the application is stopped
+	lc.Append(fx.Hook{
+		OnStop: func(context.Context) error {
+			log.Info("closing postgres store")
+			return postgresStore.Close()
+		},
+	})
+
+	return postgresStore, nil
+}
+
+func NewTaxService(store *store.PostgresStore, log *slog.Logger) (*taxservice.Service, error) {
+	svc, err := taxservice.New(store, taxservice.Config{
+		MaxMunicipalityNameLength: maxMunicipalityNameLength,
+		MunicipalityURLPattern:    constants.MunicipalityURLPattern,
+		DateURLPattern:            constants.DateURLPattern,
+		DefaultTaxRate:            &defaultTaxRate,
+	})
+	if err != nil {
+		log.Error("failed to create tax service", "error", err)
+		return nil, err
+	}
+	return svc, nil
+}
+
+func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux, log *slog.Logger) *http.Server {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultHTTPPort
 	}
-
-	svc, err := taxservice.New(postgresStore, taxservice.Config{
-		MaxMunicipalityNameLength: maxMunicipalityNameLength,
-		MunicipalityURLPattern:    constants.MunicipalityURLPattern,
-		DateURLPattern:            constants.DateURLPattern,
-	})
-	if err != nil {
-		slog.Error("failed to create service", "error", err)
-		os.Exit(1)
-	}
-
-	// Setup routes and start the server
-	mux := http.NewServeMux()
-	routes.SetupTaxRoutes(svc, mux)
 
 	// Create an HTTP server with read and write timeouts
 	httpServer := &http.Server{
@@ -66,32 +110,28 @@ func main() {
 		WriteTimeout: httpWriteTimeout,
 	}
 
-	shutdownHandler := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+	lc.Append(fx.Hook{
+		// Add a hook to schedule the start the server after dependencies are available
+		OnStart: func(context.Context) error {
+			log.Info("Starting HTTP server", "addr", httpServer.Addr)
+			go func() {
+				if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+					log.Error("HTTP server stopped", "error", err)
+				}
+			}()
+			return nil
+		},
+		// Add a hook to schedule the shutdown of the server when the application is stopped
+		OnStop: func(ctx context.Context) error {
+			log.Info("Stopping HTTP server")
+			return httpServer.Shutdown(ctx)
+		},
+	})
+	return httpServer
+}
 
-		if err := httpServer.Shutdown(ctx); err != nil {
-			slog.Error("failed to shutdown server", "error", err)
-		}
-
-		if err := postgresStore.Close(); err != nil {
-			slog.Error("failed to close store", "error", err)
-		}
-	}
-
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-signals
-		slog.Info("received shutdown signal")
-		shutdownHandler()
-		os.Exit(0)
-	}()
-
-	slog.Info("starting server", "port", port)
-	if err := httpServer.ListenAndServe(); err != nil {
-		slog.Error("server error", "error", err, "port", port)
-		shutdownHandler()
-		os.Exit(1)
-	}
+func NewServeMux(taxService *taxservice.Service) *http.ServeMux {
+	mux := http.NewServeMux()
+	routes.SetupTaxRoutes(taxService, mux)
+	return mux
 }
