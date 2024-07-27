@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"go.uber.org/fx/fxevent"
 	"log/slog"
 	"net/http"
 	"os"
@@ -36,7 +37,7 @@ var (
 func main() {
 	// Create a new application
 	app := fx.New(
-		//fx.WithLogger(WithSlogLogger),
+		fx.WithLogger(WithSlogLogger),
 		fx.Provide(
 			NewJSONLogger,
 			NewPostgresStore,
@@ -56,9 +57,9 @@ func NewJSONLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
 }
 
-//func WithSlogLogger(log *slog.Logger) fxevent.Logger {
-//	return &fxevent.SlogLogger{Logger: log}
-//}
+func WithSlogLogger(log *slog.Logger) fxevent.Logger {
+	return &fxevent.SlogLogger{Logger: log}
+}
 
 func NewPostgresStore(lc fx.Lifecycle, log *slog.Logger) (*store.PostgresStore, error) {
 	connectionString := os.Getenv(databaseURLKey)
