@@ -54,28 +54,30 @@ func main() {
 }
 
 func NewJSONLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	slog.SetDefault(logger)
+	return logger
 }
 
 func WithSlogLogger(log *slog.Logger) fxevent.Logger {
 	return &fxevent.SlogLogger{Logger: log}
 }
 
-func NewPostgresStore(lc fx.Lifecycle, log *slog.Logger) (*store.PostgresStore, error) {
+func NewPostgresStore(lc fx.Lifecycle) (*store.PostgresStore, error) {
 	connectionString := os.Getenv(databaseURLKey)
 	if connectionString == "" {
-		log.Error("Database URL not set", "databaseURLKey", databaseURLKey)
+		slog.Error("Database URL not set", "databaseURLKey", databaseURLKey)
 		return nil, errors.New("database URL not set")
 	}
-	postgresStore, err := store.NewPostgresStore(connectionString, log)
+	postgresStore, err := store.NewPostgresStore(connectionString)
 	if err != nil {
-		log.Error("failed to create postgres store", "error", err)
+		slog.Error("failed to create postgres store", "error", err)
 		return nil, err
 	}
 	// Add a hook to schedule the closing of the store when the application is stopped
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
-			log.Info("closing postgres store")
+			slog.Info("closing postgres store")
 			return postgresStore.Close()
 		},
 	})
@@ -83,7 +85,7 @@ func NewPostgresStore(lc fx.Lifecycle, log *slog.Logger) (*store.PostgresStore, 
 	return postgresStore, nil
 }
 
-func NewTaxService(store *store.PostgresStore, log *slog.Logger) (*taxservice.Service, error) {
+func NewTaxService(store *store.PostgresStore) (*taxservice.Service, error) {
 	svc, err := taxservice.New(store, taxservice.Config{
 		MaxMunicipalityNameLength: maxMunicipalityNameLength,
 		MunicipalityURLPattern:    constants.MunicipalityURLPattern,
@@ -91,13 +93,13 @@ func NewTaxService(store *store.PostgresStore, log *slog.Logger) (*taxservice.Se
 		DefaultTaxRate:            &defaultTaxRate,
 	})
 	if err != nil {
-		log.Error("failed to create tax service", "error", err)
+		slog.Error("failed to create tax service", "error", err)
 		return nil, err
 	}
 	return svc, nil
 }
 
-func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux, log *slog.Logger) *http.Server {
+func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux) *http.Server {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultHTTPPort
@@ -114,17 +116,17 @@ func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux, log *slog.Logger) *http.
 	lc.Append(fx.Hook{
 		// Add a hook to schedule the start the server after dependencies are available
 		OnStart: func(context.Context) error {
-			log.Info("Starting HTTP server", "addr", httpServer.Addr)
+			slog.Info("Starting HTTP server", "addr", httpServer.Addr)
 			go func() {
 				if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-					log.Error("HTTP server stopped", "error", err)
+					slog.Error("HTTP server stopped", "error", err)
 				}
 			}()
 			return nil
 		},
 		// Add a hook to schedule the shutdown of the server when the application is stopped
 		OnStop: func(ctx context.Context) error {
-			log.Info("Stopping HTTP server")
+			slog.Info("Stopping HTTP server")
 			return httpServer.Shutdown(ctx)
 		},
 	})

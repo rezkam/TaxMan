@@ -19,8 +19,7 @@ const (
 )
 
 type PostgresStore struct {
-	db  *sql.DB
-	log *slog.Logger
+	db *sql.DB
 
 	// Prepared statements
 	stmtInsertOrUpdateTaxRecord *sql.Stmt
@@ -28,14 +27,14 @@ type PostgresStore struct {
 }
 
 // NewPostgresStore initializes and returns a new PostgresStore after ensuring the database is ready.
-func NewPostgresStore(connStr string, log *slog.Logger) (*PostgresStore, error) {
+func NewPostgresStore(connStr string) (*PostgresStore, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Ensure the database is ready
-	if !isDBReady(db, log) {
+	if !isDBReady(db) {
 		return nil, fmt.Errorf("database is not ready")
 	}
 
@@ -45,7 +44,7 @@ func NewPostgresStore(connStr string, log *slog.Logger) (*PostgresStore, error) 
 	}
 
 	// Prepare statements
-	store := &PostgresStore{db: db, log: log}
+	store := &PostgresStore{db: db}
 	if err := store.prepareStatements(); err != nil {
 		return nil, fmt.Errorf("failed to prepare statements: %w", err)
 	}
@@ -59,17 +58,17 @@ func (s *PostgresStore) Close() error {
 }
 
 // isDBReady checks if the database is ready by pinging it multiple times.
-func isDBReady(db *sql.DB, log *slog.Logger) bool {
+func isDBReady(db *sql.DB) bool {
 	for i := 0; i < maxPingRetries; i++ {
 		err := db.Ping()
 		if err == nil {
-			log.Info("Database is ready")
+			slog.Info("Database is ready")
 			return true
 		}
-		log.Info("Database not ready", "retrying in", pingInterval, "attempt", i+1, "max attempts", maxPingRetries)
+		slog.Info("Database not ready", "retrying in", pingInterval, "attempt", i+1, "max attempts", maxPingRetries)
 		time.Sleep(pingInterval)
 	}
-	log.Error("Database is not ready after", "attempts", maxPingRetries)
+	slog.Error("Database is not ready after", "attempts", maxPingRetries)
 	return false
 }
 
