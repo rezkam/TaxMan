@@ -27,6 +27,8 @@ const (
 	maxMunicipalityNameLength = 100
 	// databaseURLKey is the key for the DATABASE_URL environment variable.
 	databaseURLKey = "DATABASE_URL"
+	// defaultLogLevel is the default log level for the application.
+	defaultLogLevel = slog.LevelInfo
 )
 
 var (
@@ -53,8 +55,12 @@ func main() {
 
 }
 
+// NewJSONLogger creates a new JSON logger and sets it as the default logger.
+// This also sets the default log level.
 func NewJSONLogger() *slog.Logger {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		Level: defaultLogLevel,
+	}))
 	slog.SetDefault(logger)
 	return logger
 }
