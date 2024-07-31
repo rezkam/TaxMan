@@ -58,9 +58,11 @@ func main() {
 // NewJSONLogger creates a new JSON logger and sets it as the default logger.
 // This also sets the default log level.
 func NewJSONLogger() *slog.Logger {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: defaultLogLevel,
-	}))
+	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		Level:     defaultLogLevel,
+		AddSource: true,
+	})
+	logger := slog.New(handler).With("app", "TaxMan")
 	slog.SetDefault(logger)
 	return logger
 }
@@ -105,7 +107,7 @@ func NewTaxService(store *store.PostgresStore) (*taxservice.Service, error) {
 	return svc, nil
 }
 
-func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux) *http.Server {
+func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux, logger *slog.Logger) *http.Server {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultHTTPPort
@@ -117,6 +119,7 @@ func NewHTTPServer(lc fx.Lifecycle, mux *http.ServeMux) *http.Server {
 		Handler:      mux,
 		ReadTimeout:  httpReadTimeout,
 		WriteTimeout: httpWriteTimeout,
+		ErrorLog:     slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 
 	lc.Append(fx.Hook{
