@@ -1,4 +1,4 @@
-.PHONY: all build run test clean test-local
+.PHONY: all build run run-bg test test-local clean
 
 all: test
 
@@ -6,13 +6,19 @@ all: test
 build:
 	@docker-compose build
 
-# Run the Docker container
+# Run the Docker container and clean up resources afterward
 run: build
-	@docker-compose up server
+	@docker-compose up server; \
+	STATUS=$$?; \
+	$(MAKE) clean; \
+	exit $$STATUS
 
 # Run the Docker container in the background
 run-bg: build
-	@docker-compose up -d server
+	@docker-compose up -d server; \
+	STATUS=$$?; \
+	$(MAKE) clean; \
+	exit $$STATUS
 
 # Run the tests in Docker
 test: build
