@@ -1,4 +1,4 @@
-package integration
+package e2e
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ var postgresStore *store.PostgresStore
 func TestMain(m *testing.M) {
 	connectString := os.Getenv("TEST_DB_URL")
 	if connectString == "" {
-		slog.Error("TEST_DB_URL is not set. Database connection is needed for integration tests.")
+		slog.Error("TEST_DB_URL is not set. Database connection is needed for e2e tests.")
 		os.Exit(1)
 	}
 
