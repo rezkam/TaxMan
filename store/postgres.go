@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -24,8 +25,7 @@ const (
 )
 
 type PostgresStore struct {
-	db *sql.DB
-
+	db                 *sql.DB
 	preparedStatements map[string]*sql.Stmt
 }
 
@@ -121,7 +121,7 @@ func createTables(ctx context.Context, db *sql.DB) error {
 func (s *PostgresStore) prepareStatements(ctx context.Context) error {
 	statementsToPrepare := map[string]string{
 		"insertOrUpdateTaxRecord": sqlInsertOrUpdateTaxRecord,
-		"selectTaxRate":           sqlSelectTaxRate,
+		"selectTaxRecords":        sqlSelectTaxRecords,
 	}
 	for name, query := range statementsToPrepare {
 		stmt, err := s.db.PrepareContext(ctx, query)
@@ -152,7 +152,7 @@ func (s *PostgresStore) AddOrUpdateTaxRecord(ctx context.Context, record model.T
 	ctx, cancel := context.WithTimeout(ctx, transactionTimeout)
 	defer cancel()
 
-	period := fmt.Sprintf("[%s, %s)", record.StartDate.Format("2006-01-02"), record.EndDate.AddDate(0, 0, 1).Format("2006-01-02"))
+	period := marshalDateRange(record.StartDate, record.EndDate)
 	stmt, ok := s.preparedStatements["insertOrUpdateTaxRecord"]
 	if !ok {
 		return fmt.Errorf("statement 'stmtInsertOrUpdateTaxRecord' not prepared")
@@ -165,27 +165,77 @@ func (s *PostgresStore) AddOrUpdateTaxRecord(ctx context.Context, record model.T
 	return err
 }
 
-// GetTaxRate retrieves the tax rate for a municipality on a given date.
-func (s *PostgresStore) GetTaxRate(ctx context.Context, query model.TaxQuery) (float64, error) {
+// GetTaxRecords retrieves all tax records for a municipality that match a specific date.
+func (s *PostgresStore) GetTaxRecords(ctx context.Context, query model.TaxQuery) ([]model.TaxRecord, error) {
 	ctx, cancel := context.WithTimeout(ctx, statementTimeout)
 	defer cancel()
 
-	var taxRate float64
+	var records []model.TaxRecord
 
-	// Construct the daterange for the query date
-	dateRange := fmt.Sprintf("[%s,%s)", query.Date.Format("2006-01-02"), query.Date.AddDate(0, 0, 1).Format("2006-01-02"))
+	dateRange := marshalDateRange(query.Date, query.Date)
 
-	stmt, ok := s.preparedStatements["selectTaxRate"]
+	stmt, ok := s.preparedStatements["selectTaxRecords"]
 	if !ok {
-		return 0, fmt.Errorf("statement 'stmtSelectTaxRate' not prepared")
+		return nil, fmt.Errorf("statement 'sqlSelectTaxRecords' not prepared")
 	}
 
-	err := stmt.QueryRowContext(ctx, query.Municipality, dateRange).Scan(&taxRate)
+	rows, err := stmt.QueryContext(ctx, query.Municipality, dateRange)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, model.ErrNotFound
+			return nil, model.ErrNotFound
 		}
-		return 0, fmt.Errorf("failed to execute stmtSelectTaxRate: %w", err)
+		return nil, fmt.Errorf("failed to execute stmtSelectTaxRate: %w", err)
 	}
-	return taxRate, nil
+	defer rows.Close()
+
+	for rows.Next() {
+		var record model.TaxRecord
+		var period string
+		if err := rows.Scan(&record.Municipality, &record.TaxRate, &period, &record.PeriodType); err != nil {
+			return nil, fmt.Errorf("failed to scan tax record row: %w", err)
+		}
+
+		// Parse the period daterange
+		record.StartDate, record.EndDate, err = unmarshalDateRange(period)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse period date range: %w", err)
+		}
+		records = append(records, record)
+	}
+	return records, nil
+}
+
+// unmarshalDateRange parses a period string '[2024-01-01,2024-12-31)' into start and end dates,
+// adjusting the end date to not include the last day.
+func unmarshalDateRange(daterange string) (time.Time, time.Time, error) {
+
+	// Split the period into start and end parts
+	dates := strings.Split(daterange, ",")
+
+	if len(dates) != 2 {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid daterange format")
+	}
+
+	// Parse start date
+	startDate, err := time.Parse("2006-01-02", strings.Trim(dates[0], "["))
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid start date format: %w", err)
+	}
+
+	endDate, err := time.Parse("2006-01-02", strings.Trim(dates[1], ")"))
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid end date format: %w", err)
+	}
+
+	endDate = endDate.AddDate(0, 0, -1) // not include the last day
+
+	// Return the parsed dates
+	return startDate, endDate, nil
+}
+
+// marshalDateRange formats a start and end date into a period string '[2024-01-01,2024-12-31)'.
+func marshalDateRange(startDate, endDate time.Time) string {
+	// Add one day to the end date to make it exclusive
+	endDateExclusive := endDate.AddDate(0, 0, 1)
+	return fmt.Sprintf("[%s,%s)", startDate.Format("2006-01-02"), endDateExclusive.Format("2006-01-02"))
 }

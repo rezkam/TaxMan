@@ -20,20 +20,12 @@ const (
 	ON CONFLICT (municipality_name, period, period_type)
 	DO UPDATE SET tax_rate = EXCLUDED.tax_rate, period_type = EXCLUDED.period_type`
 
-	sqlSelectTaxRate = `
-	SELECT tax_rate
+	sqlSelectTaxRecords = `
+	SELECT municipality_name, tax_rate, period, period_type
 	FROM municipality_taxes
 	WHERE municipality_name = $1
-	AND $2 <@ period
-	ORDER BY
-		CASE
-			WHEN period_type = 'daily' THEN 1
-			WHEN period_type = 'weekly' THEN 2
-			WHEN period_type = 'monthly' THEN 3
-			WHEN period_type = 'yearly' THEN 4
-		END,
-		tax_rate DESC
-	LIMIT 1;`
+	AND $2 <@ period;
+	`
 
 	sqlTruncateMunicipalityTaxesTable = `TRUNCATE TABLE municipality_taxes;`
 )

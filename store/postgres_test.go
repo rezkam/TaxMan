@@ -3,13 +3,12 @@ package store_test
 import (
 	"context"
 	"fmt"
+	"github.com/rezkam/TaxMan/internal/utils"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-
-	_ "github.com/lib/pq" // Import the PostgreSQL driver
+	_ "github.com/lib/pq" // Required for PostgresSQL driver
 	"github.com/rezkam/TaxMan/model"
 	"github.com/rezkam/TaxMan/store"
 	"github.com/stretchr/testify/require"
@@ -58,11 +57,6 @@ func cleanupDB(t *testing.T, store *store.PostgresStore) {
 	}
 }
 
-// Helper function to create a date without time component
-func dateOnly(year int, month time.Month, day int) time.Time {
-	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
-}
-
 func TestAddOrUpdateTaxRecord(t *testing.T) {
 	cleanupDB(t, testStore)
 
@@ -72,8 +66,8 @@ func TestAddOrUpdateTaxRecord(t *testing.T) {
 		record := model.TaxRecord{
 			Municipality: municipality,
 			TaxRate:      0.1,
-			StartDate:    dateOnly(2024, time.January, 1),
-			EndDate:      dateOnly(2024, time.January, 1),
+			StartDate:    utils.DateOnly(2024, time.January, 1),
+			EndDate:      utils.DateOnly(2024, time.January, 1),
 			PeriodType:   "daily",
 		}
 
@@ -85,8 +79,8 @@ func TestAddOrUpdateTaxRecord(t *testing.T) {
 		record := model.TaxRecord{
 			Municipality: municipality,
 			TaxRate:      0.2,
-			StartDate:    dateOnly(2024, time.March, 16),
-			EndDate:      dateOnly(2024, time.March, 16),
+			StartDate:    utils.DateOnly(2024, time.March, 16),
+			EndDate:      utils.DateOnly(2024, time.March, 16),
 			PeriodType:   "daily",
 		}
 
@@ -100,33 +94,34 @@ func TestGetTaxRate(t *testing.T) {
 
 	const municipality = "Copenhagen"
 
+	// sample records to insert for testing
 	records := []model.TaxRecord{
 		{
 			Municipality: municipality,
 			TaxRate:      0.2,
-			StartDate:    dateOnly(2024, time.January, 1),
-			EndDate:      dateOnly(2024, time.December, 31),
+			StartDate:    utils.DateOnly(2024, time.January, 1),
+			EndDate:      utils.DateOnly(2024, time.December, 31),
 			PeriodType:   "yearly",
 		},
 		{
 			Municipality: municipality,
 			TaxRate:      0.4,
-			StartDate:    dateOnly(2024, time.May, 1),
-			EndDate:      dateOnly(2024, time.May, 31),
+			StartDate:    utils.DateOnly(2024, time.May, 1),
+			EndDate:      utils.DateOnly(2024, time.May, 31),
 			PeriodType:   "monthly",
 		},
 		{
 			Municipality: municipality,
 			TaxRate:      0.1,
-			StartDate:    dateOnly(2024, time.January, 1),
-			EndDate:      dateOnly(2024, time.January, 1),
+			StartDate:    utils.DateOnly(2024, time.January, 1),
+			EndDate:      utils.DateOnly(2024, time.January, 1),
 			PeriodType:   "daily",
 		},
 		{
 			Municipality: municipality,
 			TaxRate:      0.1,
-			StartDate:    dateOnly(2024, time.December, 25),
-			EndDate:      dateOnly(2024, time.December, 25),
+			StartDate:    utils.DateOnly(2024, time.December, 25),
+			EndDate:      utils.DateOnly(2024, time.December, 25),
 			PeriodType:   "daily",
 		},
 	}
@@ -138,14 +133,14 @@ func TestGetTaxRate(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		testCases := []struct {
-			Municipality string
-			Date         time.Time
-			ExpectedRate float64
+			Municipality  string
+			Date          time.Time
+			ExpectedRates []float64
 		}{
-			{municipality, dateOnly(2024, time.January, 1), 0.1},
-			{municipality, dateOnly(2024, time.March, 16), 0.2},
-			{municipality, dateOnly(2024, time.May, 2), 0.4},
-			{municipality, dateOnly(2024, time.July, 10), 0.2},
+			{municipality, utils.DateOnly(2024, time.January, 1), []float64{0.1, 0.2}},
+			{municipality, utils.DateOnly(2024, time.March, 16), []float64{0.2}},
+			{municipality, utils.DateOnly(2024, time.May, 2), []float64{0.2, 0.4}},
+			{municipality, utils.DateOnly(2024, time.July, 10), []float64{0.2}},
 		}
 
 		for _, tc := range testCases {
@@ -155,9 +150,13 @@ func TestGetTaxRate(t *testing.T) {
 					Date:         tc.Date,
 				}
 
-				retrievedTaxRate, err := testStore.GetTaxRate(context.Background(), query)
+				records, err := testStore.GetTaxRecords(context.Background(), query)
 				require.NoError(t, err)
-				assert.Equal(t, tc.ExpectedRate, retrievedTaxRate, "retrieved tax rate should match the expected tax rate")
+				require.Len(t, records, len(tc.ExpectedRates))
+
+				for _, record := range records {
+					require.Contains(t, tc.ExpectedRates, record.TaxRate)
+				}
 			})
 		}
 	})
