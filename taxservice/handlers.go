@@ -44,19 +44,9 @@ func (tx *Service) GetTaxRateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	taxRate, err := tx.store.GetTaxRate(r.Context(), taxQuery)
+	taxRateResp, err := tx.GetTaxRate(r.Context(), taxQuery)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			if tx.config.DefaultTaxRate != nil {
-				resp := GetTaxRateResponse{
-					Municipality:  municipality,
-					Date:          date,
-					TaxRate:       *tx.config.DefaultTaxRate,
-					IsDefaultRate: true,
-				}
-				jsonutils.JsonResponse(w, resp, http.StatusOK)
-				return
-			}
 			jsonutils.JsonError(w, "tax rate not found", http.StatusNotFound)
 			return
 		}
@@ -68,8 +58,8 @@ func (tx *Service) GetTaxRateHandler(w http.ResponseWriter, r *http.Request) {
 	resp := GetTaxRateResponse{
 		Municipality:  municipality,
 		Date:          date,
-		TaxRate:       taxRate,
-		IsDefaultRate: false,
+		TaxRate:       taxRateResp.TaxRate,
+		IsDefaultRate: taxRateResp.IsDefaultRate,
 	}
 	jsonutils.JsonResponse(w, resp, http.StatusOK)
 }

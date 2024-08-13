@@ -68,7 +68,7 @@ func TestAddOrUpdateTaxRecordRequestToModel(t *testing.T) {
 		MunicipalityURLPattern:    "municipality",
 		DateURLPattern:            "date",
 	}
-	mockStore := &MockStore{}
+	mockStore := &mockStore{}
 	svc, err := New(mockStore, config)
 	require.NoError(t, err)
 
