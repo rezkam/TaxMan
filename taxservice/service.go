@@ -3,6 +3,7 @@ package taxservice
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/rezkam/TaxMan/model"
 )
@@ -28,11 +29,10 @@ type Config struct {
 type taxStore interface {
 	// AddOrUpdateTaxRecord adds a new tax record or updates an existing one.
 	AddOrUpdateTaxRecord(ctx context.Context, record model.TaxRecord) error
-	// GetTaxRate retrieves the tax rate for a municipality on a given date.
-	// multiple tax rates apply to a specific date, the more specific rate which has the smallest period should be returned.
-	// takes precedence (daily > weekly > monthly > yearly).
-	// if we have two records with the same length of the period we return the one with the highest tax rate.
-	GetTaxRate(ctx context.Context, query model.TaxQuery) (float64, error)
+
+	// GetTaxRecords retrieves all tax records for a municipality that match a specific date.
+	// The service layer will be responsible for selecting the most appropriate record.
+	GetTaxRecords(ctx context.Context, query model.TaxQuery) ([]model.TaxRecord, error)
 }
 
 // New creates a new Service with the provided store and configuration.
@@ -58,4 +58,73 @@ func validateConfig(config Config) error {
 		return errors.New("DatePattern cannot be empty")
 	}
 	return nil
+}
+
+// TaxRateResponse represents the response containing the tax rate and whether it is the default rate.
+type TaxRateResponse struct {
+	TaxRate       float64
+	IsDefaultRate bool
+}
+
+// GetTaxRate retrieves the tax rate for a municipality on a specific date.
+func (tx *Service) GetTaxRate(ctx context.Context, query model.TaxQuery) (TaxRateResponse, error) {
+	records, err := tx.store.GetTaxRecords(ctx, query)
+	if err != nil {
+		if errors.Is(err, model.ErrNotFound) && tx.config.DefaultTaxRate != nil {
+			return TaxRateResponse{TaxRate: *tx.config.DefaultTaxRate, IsDefaultRate: true}, nil
+		}
+		return TaxRateResponse{}, err
+	}
+
+	if len(records) == 0 {
+		if tx.config.DefaultTaxRate != nil {
+			return TaxRateResponse{TaxRate: *tx.config.DefaultTaxRate, IsDefaultRate: true}, nil
+		}
+		return TaxRateResponse{}, model.ErrNotFound
+	}
+
+	// Select the best record based on business logic
+	bestRecord, err := tx.selectBestTaxRecord(records)
+	if err == nil {
+		return TaxRateResponse{TaxRate: bestRecord.TaxRate, IsDefaultRate: false}, nil
+	}
+
+	// If no suitable record was found, fall back to the default tax rate if it exists
+	if tx.config.DefaultTaxRate != nil {
+		return TaxRateResponse{TaxRate: *tx.config.DefaultTaxRate, IsDefaultRate: true}, nil
+	}
+
+	// If no records and no default tax rate, return an error
+	return TaxRateResponse{}, model.ErrNotFound
+
+}
+
+// selectBestTaxRecord selects the most appropriate tax record from a list of records.
+// if multiple tax rates apply to a specific date, the record with the highest priority period type is selected
+// if multiple records have the same period type, the record with the highest tax rate is selected
+func (tx *Service) selectBestTaxRecord(records []model.TaxRecord) (*model.TaxRecord, error) {
+	if len(records) == 0 {
+		return nil, fmt.Errorf("no tax records found")
+	}
+
+	bestRecord := &records[0] // Start with the first record as the best candidate
+
+	for _, record := range records[1:] {
+		currentPriority, err := model.GetPeriodTypePriority(record.PeriodType)
+		if err != nil {
+			return nil, err
+		}
+		bestPriority, err := model.GetPeriodTypePriority(bestRecord.PeriodType)
+		if err != nil {
+			return nil, err
+		}
+		// Compare each record to determine if it's better than the current best
+		if currentPriority < bestPriority {
+			bestRecord = &record
+		} else if currentPriority == bestPriority && record.TaxRate > bestRecord.TaxRate {
+			bestRecord = &record
+		}
+	}
+
+	return bestRecord, nil
 }
